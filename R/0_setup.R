@@ -1,142 +1,194 @@
-# ============================================================
+# ==============================================================================
 # 0_setup.R
-# Shared setup for thesis project:
-# "The Effect of Monetary Policy Announcements on Cryptocurrency Returns"
-# ============================================================
+# Thesis project: The Effect of Monetary Policy Announcements on Cryptocurrency Returns
+#
+# Purpose:
+#   - Detect project root
+#   - Define all paths
+#   - Load/install packages
+#   - Create output folders
+#   - Define global model settings
+#   - Define shared variable labels and graph/table settings
+# ==============================================================================
 
-# -----------------------------
-# 1. Package management
-# -----------------------------
 
-required_packages <- c(
-  "tidyverse",
-  "lubridate",
-  "janitor",
-  "sandwich",
-  "lmtest",
-  "broom",
-  "lpirfs",
-  "patchwork",
-  "scales"
+# ------------------------------------------------------------------------------
+# 0.1 Project root detection
+# ------------------------------------------------------------------------------
+
+# detect_project_root <- function(start_dir = getwd()) {
+#   start_dir <- normalizePath(start_dir, winslash = "/", mustWork = TRUE)
+#   current <- start_dir
+#   
+#   repeat {
+#     has_data_dir <- dir.exists(file.path(current, "data"))
+#     has_code_dir <- dir.exists(file.path(current, "RCodin", "R"))
+#     
+#     if (has_data_dir && has_code_dir) {
+#       return(current)
+#     }
+#     
+#     parent <- dirname(current)
+#     
+#     if (identical(parent, current)) {
+#       break
+#     }
+#     
+#     current <- parent
+#   }
+#   
+#   # Fallback for when the script is launched from RCodin/R before all folders exist
+#   if (basename(start_dir) == "R" && basename(dirname(start_dir)) == "RCodin") {
+#     return(dirname(dirname(start_dir)))
+#   }
+#   
+#   if (basename(start_dir) == "RCodin") {
+#     return(dirname(start_dir))
+#   }
+#   
+#   # Final fallback: assume current working directory is the project root
+#   start_dir
+# }
+
+PROJECT_ROOT <- file.path(path.expand("~"), "Documents", "Timi", "RThesis")
+Sys.setenv(PROJECT_ROOT = PROJECT_ROOT)
+
+
+# ------------------------------------------------------------------------------
+# 0.2 Path definitions
+# ------------------------------------------------------------------------------
+
+PATHS <- list(
+  project_root   = PROJECT_ROOT,
+  data           = file.path(PROJECT_ROOT, "data"),
+  data_raw       = file.path(PROJECT_ROOT, "data", "raw"),
+  data_processed = file.path(PROJECT_ROOT, "data", "processed"),
+  output         = file.path(PROJECT_ROOT, "output"),
+  figures        = file.path(PROJECT_ROOT, "output", "figures"),
+  tables         = file.path(PROJECT_ROOT, "output", "tables"),
+  code           = file.path(PROJECT_ROOT, "RCodin", "R")
 )
 
-install_if_missing <- function(pkg) {
-  if (!requireNamespace(pkg, quietly = TRUE)) {
-    install.packages(pkg, dependencies = TRUE)
+RAW_DATA_FILE <- file.path(PATHS$data_raw, "merged.csv")
+
+
+# ------------------------------------------------------------------------------
+# 0.3 Create required folders
+# ------------------------------------------------------------------------------
+
+create_dir_if_missing <- function(path) {
+  if (!dir.exists(path)) {
+    dir.create(path, recursive = TRUE, showWarnings = FALSE)
   }
 }
 
-invisible(lapply(required_packages, install_if_missing))
+invisible(lapply(PATHS, create_dir_if_missing))
 
-suppressPackageStartupMessages({
-  library(tidyverse)
-  library(lubridate)
-  library(janitor)
-  library(sandwich)
-  library(lmtest)
-  library(broom)
-  library(lpirfs)
-  library(patchwork)
-  library(scales)
-})
 
-# -----------------------------
-# 2. Project paths
-# -----------------------------
+# ------------------------------------------------------------------------------
+# 0.4 Package loading
+# ------------------------------------------------------------------------------
 
-# Assumption:
-# Run scripts from the project root directory, i.e. the folder containing:
-# data/
-# output/
-# RCodin/
+options(repos = c(CRAN = "https://cloud.r-project.org"))
 
-PROJECT_ROOT <- file.path(path.expand("~"), "Documents", "Timi", "RThesis")
+REQUIRED_PACKAGES <- c(
+  "tidyverse",  # dplyr, ggplot2, readr, tidyr, purrr, tibble, stringr
+  "lubridate",  # date handling
+  "janitor",    # clean_names()
+  "moments",    # skewness()
+  "broom",      # tidy model outputs
+  "sandwich",   # Newey-West / HAC standard errors
+  "lmtest",     # coeftest()
+  "patchwork",  # plot grids
+  "scales",     # axis labels
+  "lpirfs"      # local projection impulse response functions
+)
 
-DATA_RAW_DIR       <- file.path(PROJECT_ROOT, "data", "raw")
-DATA_PROCESSED_DIR <- file.path(PROJECT_ROOT, "data", "processed")
-OUTPUT_DIR         <- file.path(PROJECT_ROOT, "output")
-TABLES_DIR         <- file.path(OUTPUT_DIR, "tables")
-FIGURES_DIR        <- file.path(OUTPUT_DIR, "figures")
-R_DIR              <- file.path(PROJECT_ROOT, "RCodin", "R")
+install_and_load_packages <- function(packages) {
+  missing_packages <- packages[!packages %in% rownames(installed.packages())]
+  
+  if (length(missing_packages) > 0) {
+    message("Installing missing packages: ", paste(missing_packages, collapse = ", "))
+    install.packages(missing_packages)
+  }
+  
+  invisible(
+    lapply(
+      packages,
+      function(pkg) {
+        suppressPackageStartupMessages(
+          library(pkg, character.only = TRUE)
+        )
+      }
+    )
+  )
+}
 
-dir.create(DATA_RAW_DIR, recursive = TRUE, showWarnings = FALSE)
-dir.create(DATA_PROCESSED_DIR, recursive = TRUE, showWarnings = FALSE)
-dir.create(TABLES_DIR, recursive = TRUE, showWarnings = FALSE)
-dir.create(FIGURES_DIR, recursive = TRUE, showWarnings = FALSE)
+install_and_load_packages(REQUIRED_PACKAGES)
 
-# -----------------------------
-# 3. Global analysis settings
-# -----------------------------
 
-HORIZONS <- 0:25
+# ------------------------------------------------------------------------------
+# 0.5 Global model settings
+# ------------------------------------------------------------------------------
+
+HORIZON_MAX <- 25
+HORIZONS <- 0:HORIZON_MAX
 
 CONF_LEVEL <- 0.95
-SIGNIF_LEVEL <- 0.05
+CONF_Z <- qnorm(1 - (1 - CONF_LEVEL) / 2)
 
-Z_CRIT_95 <- qnorm(1 - (1 - CONF_LEVEL) / 2)
+SIG_LEVEL <- 0.05
 
-# File names
-RAW_DATA_FILE <- file.path(DATA_RAW_DIR, "merged_data_simplified.csv")
+# Main LP settings
+LP_LAGS_ENDOG <- 1
+LP_LAGS_EXOG <- 1
+LP_TREND <- 0
 
-# Main processed files
-MASTER_CLEAN_FILE <- file.path(DATA_PROCESSED_DIR, "master_clean_daily.rds")
-EU_TRADING_FILE   <- file.path(DATA_PROCESSED_DIR, "eu_trading_days.rds")
-US_TRADING_FILE   <- file.path(DATA_PROCESSED_DIR, "us_trading_days.rds")
+# For manual Newey-West regressions, the lag can be horizon-specific.
+# A common LP convention is to allow the HAC lag to grow with horizon h.
+NW_LAG_RULE <- "horizon"
 
-IRF_CUSTOM_FILE    <- file.path(DATA_PROCESSED_DIR, "irf_results_custom.rds")
-IRF_LPIRFS_FILE    <- file.path(DATA_PROCESSED_DIR, "irf_results_lpirfs_validation.rds")
 
-# -----------------------------
-# 4. Variable groups
-# -----------------------------
+# ------------------------------------------------------------------------------
+# 0.6 Canonical variable names
+# ------------------------------------------------------------------------------
 
-price_vars <- c(
-  "btc_price",
-  "eth_price",
-  "usdt_price",
-  "sp500",
-  "stoxx50",
-  "dxy"
+DATE_VAR <- "date"
+
+CRYPTO_RETURN_VARS <- c(
+  "btc_log_return",
+  "eth_log_return",
+  "usdt_log_return"
 )
 
-crypto_price_vars <- c(
-  "btc_price",
-  "eth_price",
-  "usdt_price"
+STOCK_RETURN_VARS <- c(
+  "sp500_log_return",
+  "stoxx50_log_return"
 )
 
-stock_price_vars <- c(
-  "sp500",
-  "stoxx50"
+MARKET_RETURN_VARS <- c(
+  CRYPTO_RETURN_VARS,
+  STOCK_RETURN_VARS,
+  "dxy_log_return"
 )
 
-return_vars <- c(
-  "btc_ret",
-  "eth_ret",
-  "usdt_ret",
-  "sp500_ret",
-  "stoxx50_ret",
-  "dxy_ret"
+SHOCK_VARS <- c(
+  ECB = "ecb_mp",
+  Fed = "fed_mp"
 )
 
-crypto_return_vars <- c(
-  "btc_ret",
-  "eth_ret",
-  "usdt_ret"
+FED_CONTROL_VARS <- c(
+  "sp500_log_return",
+  "dxy_log_return",
+  "us_short",
+  "us_long",
+  "us_3m",
+  "covid_dummy"
 )
 
-stock_return_vars <- c(
-  "sp500_ret",
-  "stoxx50_ret"
-)
-
-shock_vars <- c(
-  "ecb_mp",
-  "fed_mp"
-)
-
-eu_control_vars <- c(
-  "stoxx50_ret",
+ECB_CONTROL_VARS <- c(
+  "stoxx50_log_return",
+  "dxy_log_return",
   "de_short",
   "de_long",
   "de_3m",
@@ -144,158 +196,150 @@ eu_control_vars <- c(
   "mica_dummy"
 )
 
-us_control_vars <- c(
-  "sp500_ret",
-  "dxy_ret",
-  "us_short",
-  "us_long",
-  "us_3m",
-  "covid_dummy"
-)
-
-all_control_vars <- unique(c(
-  eu_control_vars,
-  us_control_vars
+ALL_MODEL_VARS <- unique(c(
+  DATE_VAR,
+  CRYPTO_RETURN_VARS,
+  STOCK_RETURN_VARS,
+  "dxy_log_return",
+  SHOCK_VARS,
+  FED_CONTROL_VARS,
+  ECB_CONTROL_VARS
 ))
 
-# -----------------------------
-# 5. Helper functions: safe parsing
-# -----------------------------
 
-parse_date_safe <- function(x) {
-  x_chr <- as.character(x)
-  
-  parsed <- suppressWarnings(lubridate::dmy(x_chr))
-  
-  if (all(is.na(parsed))) {
-    parsed <- suppressWarnings(lubridate::ymd(x_chr))
-  }
-  
-  if (all(is.na(parsed))) {
-    parsed <- suppressWarnings(lubridate::mdy(x_chr))
-  }
-  
-  parsed
-}
+# ------------------------------------------------------------------------------
+# 0.7 Variable labels for tables and figures
+# ------------------------------------------------------------------------------
 
-parse_numeric_safe <- function(x) {
-  if (is.numeric(x)) {
-    return(x)
-  }
+VAR_LABELS <- c(
+  date = "Date",
   
-  x_chr <- as.character(x)
+  btc_log_return = "BTC log return",
+  eth_log_return = "ETH log return",
+  usdt_log_return = "USDT log return",
   
-  x_chr <- stringr::str_trim(x_chr)
-  x_chr <- stringr::str_replace_all(x_chr, "\\s", "")
-  x_chr <- stringr::str_replace_all(x_chr, "%", "")
+  sp500_log_return = "S&P 500 log return",
+  stoxx50_log_return = "STOXX50 log return",
+  dxy_log_return = "DXY log return",
   
-  # Handles European decimal format, e.g. "1.234,56"
-  has_comma_decimal <- stringr::str_detect(x_chr, ",")
+  ecb_mp = "ECB monetary policy surprise",
+  fed_mp = "Fed monetary policy surprise",
   
-  x_chr[has_comma_decimal] <- x_chr[has_comma_decimal] |>
-    stringr::str_replace_all("\\.", "") |>
-    stringr::str_replace_all(",", ".")
+  us_short = "US short-term yield",
+  us_long = "US long-term yield",
+  us_3m = "US 3-month yield",
   
-  suppressWarnings(as.numeric(x_chr))
-}
+  de_short = "German short-term yield",
+  de_long = "German long-term yield",
+  de_3m = "German 3-month yield",
+  
+  covid_dummy = "COVID-19 dummy",
+  mica_dummy = "MiCA dummy"
+)
 
-# -----------------------------
-# 6. Helper functions: returns and leads
-# -----------------------------
+ASSET_LABELS <- c(
+  btc_log_return = "BTC",
+  eth_log_return = "ETH",
+  usdt_log_return = "USDT"
+)
 
-make_log_return <- function(price) {
-  100 * (log(price) - log(dplyr::lag(price, 1)))
-}
+CENTRAL_BANK_LABELS <- c(
+  ECB = "ECB",
+  Fed = "Fed"
+)
 
-make_future_return <- function(ret, h) {
-  dplyr::lead(ret, h)
-}
 
-# -----------------------------
-# 7. Helper functions: summary statistics
-# -----------------------------
+# ------------------------------------------------------------------------------
+# 0.8 Table formatting helpers
+# ------------------------------------------------------------------------------
 
-calc_skewness <- function(x) {
-  x <- x[is.finite(x)]
-  
-  n <- length(x)
-  
-  if (n < 3) {
-    return(NA_real_)
-  }
-  
-  x_mean <- mean(x, na.rm = TRUE)
-  x_sd <- sd(x, na.rm = TRUE)
-  
-  if (is.na(x_sd) || x_sd == 0) {
-    return(NA_real_)
-  }
-  
-  mean(((x - x_mean) / x_sd)^3, na.rm = TRUE)
-}
+TABLE_DIGITS <- 4
 
-summary_stats <- function(data, vars) {
-  data |>
-    dplyr::select(dplyr::any_of(vars)) |>
-    tidyr::pivot_longer(
-      cols = dplyr::everything(),
-      names_to = "variable",
-      values_to = "value"
-    ) |>
-    dplyr::group_by(variable) |>
-    dplyr::summarise(
-      n = sum(!is.na(value)),
-      mean = mean(value, na.rm = TRUE),
-      sd = sd(value, na.rm = TRUE),
-      min = min(value, na.rm = TRUE),
-      max = max(value, na.rm = TRUE),
-      skewness = calc_skewness(value),
-      .groups = "drop"
+round_numeric_columns <- function(data, digits = TABLE_DIGITS) {
+  data %>%
+    mutate(
+      across(
+        where(is.numeric),
+        ~ round(.x, digits = digits)
+      )
     )
 }
 
-# -----------------------------
-# 8. Helper functions: Newey-West LP output
-# -----------------------------
-
-tidy_lm_newey_west <- function(model, lag = NULL, prewhite = FALSE, adjust = TRUE) {
-  if (is.null(lag)) {
-    lag <- 0
-  }
+write_table_csv <- function(data, filename, digits = TABLE_DIGITS) {
+  output_path <- file.path(PATHS$tables, filename)
   
-  vcov_nw <- sandwich::NeweyWest(
-    model,
-    lag = lag,
-    prewhite = prewhite,
-    adjust = adjust
-  )
+  data_out <- data %>%
+    round_numeric_columns(digits = digits)
   
-  lmtest::coeftest(model, vcov. = vcov_nw) |>
-    broom::tidy() |>
-    dplyr::rename(
-      coefficient = estimate,
-      std_error = std.error,
-      t_stat = statistic,
-      p_value = p.value
-    )
-}
-
-# -----------------------------
-# 9. Helper functions: saving outputs
-# -----------------------------
-
-save_table_csv <- function(data, filename) {
-  output_path <- file.path(TABLES_DIR, filename)
-  
-  readr::write_csv(data, output_path, na = "")
+  readr::write_csv(data_out, output_path, na = "")
   
   message("Saved table: ", output_path)
-  
   invisible(output_path)
 }
 
-save_figure_png <- function(plot, filename, width = 10, height = 6, dpi = 300) {
-  output_path <- file.path(FIGURES_DIR, filename)
+
+# ------------------------------------------------------------------------------
+# 0.9 Figure formatting helpers
+# ------------------------------------------------------------------------------
+
+FIG_DPI <- 320
+FIG_WIDTH_DEFAULT <- 10
+FIG_HEIGHT_DEFAULT <- 6
+
+theme_thesis <- function(base_size = 11) {
+  ggplot2::theme_bw(base_size = base_size) +
+    ggplot2::theme(
+      plot.title = ggplot2::element_text(face = "bold", hjust = 0),
+      plot.subtitle = ggplot2::element_text(hjust = 0),
+      plot.caption = ggplot2::element_text(hjust = 0, size = base_size - 2),
+      
+      axis.title = ggplot2::element_text(face = "plain"),
+      axis.text = ggplot2::element_text(color = "black"),
+      
+      legend.position = "bottom",
+      legend.title = ggplot2::element_blank(),
+      legend.key = ggplot2::element_blank(),
+      
+      panel.grid.minor = ggplot2::element_blank(),
+      panel.grid.major = ggplot2::element_line(linewidth = 0.20, color = "grey85"),
+      
+      strip.background = ggplot2::element_rect(fill = "white", color = "black"),
+      strip.text = ggplot2::element_text(face = "bold")
+    )
+}
+
+THESIS_LINETYPES <- c(
+  "solid",
+  "dashed",
+  "dotted",
+  "dotdash",
+  "longdash"
+)
+
+THESIS_SHAPES <- c(
+  16,
+  1,
+  2,
+  0,
+  4
+)
+
+THESIS_GREYS <- c(
+  "black",
+  "grey25",
+  "grey45",
+  "grey65",
+  "grey80"
+)
+
+save_figure_png <- function(
+    plot,
+    filename,
+    width = FIG_WIDTH_DEFAULT,
+    height = FIG_HEIGHT_DEFAULT,
+    dpi = FIG_DPI
+) {
+  output_path <- file.path(PATHS$figures, filename)
   
   ggplot2::ggsave(
     filename = output_path,
@@ -304,41 +348,44 @@ save_figure_png <- function(plot, filename, width = 10, height = 6, dpi = 300) {
     height = height,
     dpi = dpi,
     units = "in",
+    device = "png",
     bg = "white"
   )
   
   message("Saved figure: ", output_path)
-  
   invisible(output_path)
 }
 
-# -----------------------------
-# 10. Thesis plotting theme
-# -----------------------------
 
-theme_thesis_bw <- function(base_size = 11) {
-  ggplot2::theme_bw(base_size = base_size) +
-    ggplot2::theme(
-      plot.title = ggplot2::element_text(face = "bold", hjust = 0),
-      plot.subtitle = ggplot2::element_text(hjust = 0),
-      panel.grid.minor = ggplot2::element_blank(),
-      legend.position = "bottom",
-      legend.title = ggplot2::element_blank(),
-      strip.background = ggplot2::element_rect(fill = "white", color = "black"),
-      strip.text = ggplot2::element_text(face = "bold")
-    )
+# ------------------------------------------------------------------------------
+# 0.10 Small utility functions
+# ------------------------------------------------------------------------------
+
+label_variable <- function(x) {
+  labels <- VAR_LABELS[x]
+  ifelse(is.na(labels), x, labels)
 }
 
-# -----------------------------
-# 11. Utility checks
-# -----------------------------
+label_asset <- function(x) {
+  labels <- ASSET_LABELS[x]
+  ifelse(is.na(labels), x, labels)
+}
+
+safe_read_csv <- function(path) {
+  if (!file.exists(path)) {
+    stop("File does not exist: ", path, call. = FALSE)
+  }
+  
+  readr::read_csv(path, show_col_types = FALSE)
+}
 
 check_required_columns <- function(data, required_cols, data_name = "data") {
   missing_cols <- setdiff(required_cols, names(data))
   
   if (length(missing_cols) > 0) {
     stop(
-      "Missing required columns in ", data_name, ": ",
+      data_name,
+      " is missing required columns: ",
       paste(missing_cols, collapse = ", "),
       call. = FALSE
     )
@@ -347,21 +394,23 @@ check_required_columns <- function(data, required_cols, data_name = "data") {
   invisible(TRUE)
 }
 
-check_file_exists <- function(path) {
-  if (!file.exists(path)) {
-    stop("File does not exist: ", path, call. = FALSE)
-  }
-  
-  invisible(TRUE)
+standardize_na_shock_to_zero <- function(x) {
+  ifelse(is.na(x), 0, x)
 }
 
-# -----------------------------
-# 12. Console confirmation
-# -----------------------------
 
-message("Setup loaded successfully.")
+# ------------------------------------------------------------------------------
+# 0.11 Setup summary
+# ------------------------------------------------------------------------------
+
+message("Setup complete.")
 message("Project root: ", PROJECT_ROOT)
-message("Tables will be saved to: ", TABLES_DIR)
-message("Figures will be saved to: ", FIGURES_DIR)
-message("Processed data will be saved to: ", DATA_PROCESSED_DIR)
+message("Raw data file expected at: ", RAW_DATA_FILE)
 
+if (!file.exists(RAW_DATA_FILE)) {
+  warning(
+    "Raw data file not found yet. Expected location: ",
+    RAW_DATA_FILE,
+    call. = FALSE
+  )
+}
