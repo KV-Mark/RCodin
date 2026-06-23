@@ -389,7 +389,8 @@ saveRDS(
 )
 
 
-if (FALSE) {
+#if (FALSE) {
+
 # ------------------------------------------------------------
 # 4.11b Run baseline local-projection IRFs for stock-market assets
 # ------------------------------------------------------------
@@ -457,7 +458,7 @@ saveRDS(
   file.path(PROCESSED_DIR, "stock_baseline_irfs_step4.rds")
 )
 
-}
+#}
 
 
 if (FALSE) {

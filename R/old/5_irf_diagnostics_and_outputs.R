@@ -16,7 +16,7 @@ source(file.path(path.expand("~"), "Documents", "Timi", "RThesis", "RCodin", "R"
 # ------------------------------------------------------------
 
 all_irfs <- readRDS(file.path(PROCESSED_DIR, "all_baseline_irfs_step4.rds"))
-# stock_irfs <- readRDS(file.path(PROCESSED_DIR, "stock_baseline_irfs_step4.rds"))
+stock_irfs <- readRDS(file.path(PROCESSED_DIR, "stock_baseline_irfs_step4.rds"))
 
 us_dt <- readRDS(file.path(PROCESSED_DIR, "us_trading_step2.rds"))
 eu_dt <- readRDS(file.path(PROCESSED_DIR, "eu_trading_step2.rds"))
@@ -124,7 +124,8 @@ saveRDS(
   file.path(PROCESSED_DIR, "appendix_cbi_irfs_step5.rds")
 )
 
-if (FALSE) {
+#if (FALSE) {
+
 # ------------------------------------------------------------
 # 5.3b Separate stock-market MP and CBI IRFs
 # ------------------------------------------------------------
@@ -165,7 +166,7 @@ saveRDS(
   file.path(PROCESSED_DIR, "appendix_cbi_stock_irfs_step5.rds")
 )
 
-}
+#}
 
 # ------------------------------------------------------------
 # 5.3c Detailed MP and CBI impulse-response tables
