@@ -200,7 +200,7 @@ if (nrow(irf_plot_data) == 0) {
 
 
 # ------------------------------------------------------------------------------
-# 8.5 Figure 2: Return time series
+# 8.5 Figure 2: Return time series (3x2 grid for readability)
 # ------------------------------------------------------------------------------
 
 returns_ts_data <- clean_data %>%
@@ -230,27 +230,37 @@ figure_02 <- ggplot(
   returns_ts_data,
   aes(
     x = .data$date,
-    y = .data$log_return,
-    linetype = .data$series_label,
-    group = .data$series_label
+    y = .data$log_return
   )
 ) +
-  geom_line(linewidth = 0.25) +
-  scale_linetype_manual(values = asset_linetypes) +
+  geom_line(linewidth = 0.25, color = "black") +
   make_zero_line() +
+  facet_wrap(
+    vars(.data$series_label),
+    nrow = 3,
+    ncol = 2,
+    scales = "free_y"
+  ) +
+  scale_x_date(
+    date_breaks = "2 years",
+    date_labels = "%Y"
+  ) +
   labs(
     title = "Daily Log Returns of Cryptocurrencies and Stock Indices",
     x = NULL,
     y = "Daily log return",
-    caption = "Notes: The figure plots daily log returns for BTC, ETH, USDT, S&P 500, and STOXX50."
+    caption = "Notes: The figure plots daily log returns for BTC, ETH, USDT, S&P 500, and STOXX50. Panels use free y-axis scaling for readability."
   ) +
-  theme_thesis()
+  theme_thesis() +
+  theme(
+    legend.position = "none"
+  )
 
 save_figure_png(
   figure_02,
   "figure_02_returns_time_series.png",
-  width = 11,
-  height = 6.5
+  width = 12,
+  height = 8.5
 )
 
 
@@ -258,8 +268,19 @@ save_figure_png(
 # 8.6 Figure 6: Six-grid baseline IRFs
 # ------------------------------------------------------------------------------
 
+irf_plot_data_figure06 <- irf_plot_data %>%
+  mutate(
+    panel_label = factor(
+      paste(as.character(.data$central_bank), as.character(.data$asset), sep = " - "),
+      levels = c(
+        "ECB - BTC", "ECB - ETH", "ECB - USDT",
+        "Fed - BTC", "Fed - ETH", "Fed - USDT"
+      )
+    )
+  )
+
 figure_06 <- ggplot(
-  irf_plot_data,
+  irf_plot_data_figure06,
   aes(
     x = .data$horizon,
     y = .data$coefficient
@@ -273,20 +294,22 @@ figure_06 <- ggplot(
     fill = "grey80",
     color = NA
   ) +
-  geom_line(linewidth = 0.45) +
+  geom_line(linewidth = 0.45, color = "black") +
   geom_point(
     aes(shape = .data$significant_5pct),
     size = 1.2,
-    stroke = 0.45
+    stroke = 0.45,
+    color = "black"
   ) +
   scale_shape_manual(
     values = c(`FALSE` = 1, `TRUE` = 16),
     labels = c(`FALSE` = "Not significant at 5%", `TRUE` = "Significant at 5%")
   ) +
   make_zero_line() +
-  facet_grid(
-    rows = vars(.data$central_bank),
-    cols = vars(.data$asset),
+  facet_wrap(
+    vars(.data$panel_label),
+    nrow = 2,
+    ncol = 3,
     scales = "free_y"
   ) +
   scale_x_continuous(
@@ -296,7 +319,7 @@ figure_06 <- ggplot(
     title = "Baseline Impulse Responses to Monetary Policy Surprises",
     x = "Trading-day horizon",
     y = "IRF coefficient",
-    caption = "Notes: Shaded areas are 95% confidence intervals. Filled markers indicate 5% statistical significance."
+    caption = "Notes: Shaded areas are 95% confidence intervals. Filled markers indicate 5% statistical significance. Each panel uses its own y-axis scale."
   ) +
   theme_thesis()
 
@@ -304,7 +327,7 @@ save_figure_png(
   figure_06,
   "figure_06_irf_6_grid_baseline.png",
   width = 12,
-  height = 7.5
+  height = 8
 )
 
 
@@ -317,21 +340,36 @@ figure_07 <- ggplot(
   aes(
     x = .data$horizon,
     y = .data$coefficient,
-    linetype = .data$central_bank,
     group = .data$central_bank
   )
 ) +
   geom_ribbon(
+    data = irf_plot_data %>% filter(as.character(.data$central_bank) == "ECB"),
     aes(
       ymin = .data$conf_low,
-      ymax = .data$conf_high,
-      group = .data$central_bank
+      ymax = .data$conf_high
     ),
-    fill = "grey85",
-    alpha = 0.45,
+    fill = "grey70",
+    alpha = 0.55,
     color = NA
   ) +
-  geom_line(linewidth = 0.5) +
+  geom_ribbon(
+    data = irf_plot_data %>% filter(as.character(.data$central_bank) == "Fed"),
+    aes(
+      ymin = .data$conf_low,
+      ymax = .data$conf_high
+    ),
+    fill = "grey88",
+    alpha = 0.85,
+    color = NA
+  ) +
+  geom_line(
+    aes(
+      linetype = .data$central_bank
+    ),
+    linewidth = 0.55,
+    color = "black"
+  ) +
   scale_linetype_manual(
     values = c(ECB = "solid", Fed = "dashed")
   ) +
@@ -348,7 +386,7 @@ figure_07 <- ggplot(
     title = "Central Bank Asymmetry in Cryptocurrency Responses",
     x = "Trading-day horizon",
     y = "IRF coefficient",
-    caption = "Notes: Each panel compares ECB and Fed monetary policy surprise responses for one cryptocurrency. Shaded areas are 95% confidence intervals."
+    caption = "Notes: Each panel compares ECB and Fed monetary policy surprise responses for one cryptocurrency. Darker shading denotes ECB 95% confidence intervals; lighter shading denotes Fed 95% confidence intervals."
   ) +
   theme_thesis()
 
@@ -356,9 +394,8 @@ save_figure_png(
   figure_07,
   "figure_07_central_bank_asymmetry.png",
   width = 12,
-  height = 4.8
+  height = 5
 )
-
 
 # ------------------------------------------------------------------------------
 # 8.8 Figure 8: Cross-currency heterogeneity
@@ -430,6 +467,16 @@ distribution_data <- clean_data %>%
       .data$series_label,
       levels = c("BTC", "ETH", "USDT", "S&P 500", "STOXX50")
     )
+  ) %>%
+  group_by(.data$series_label) %>%
+  mutate(
+    plot_low = stats::quantile(.data$log_return, probs = 0.005, na.rm = TRUE),
+    plot_high = stats::quantile(.data$log_return, probs = 0.995, na.rm = TRUE)
+  ) %>%
+  ungroup() %>%
+  filter(
+    .data$log_return >= .data$plot_low,
+    .data$log_return <= .data$plot_high
   )
 
 figure_09 <- ggplot(
@@ -437,12 +484,11 @@ figure_09 <- ggplot(
   aes(x = .data$log_return)
 ) +
   geom_histogram(
-    bins = 60,
+    bins = 45,
     fill = "grey80",
     color = "black",
     linewidth = 0.2
   ) +
-  make_zero_line() +
   facet_wrap(
     vars(.data$series_label),
     nrow = 3,
@@ -453,7 +499,7 @@ figure_09 <- ggplot(
     title = "Frequency Distributions of Daily Log Returns",
     x = "Daily log return",
     y = "Frequency",
-    caption = "Notes: The figure reports histograms for BTC, ETH, USDT, S&P 500, and STOXX50 daily log returns."
+    caption = "Notes: The figure reports histograms for BTC, ETH, USDT, S&P 500, and STOXX50 daily log returns. For readability, each panel displays the central 99% of its own return distribution."
   ) +
   theme_thesis() +
   theme(
@@ -463,8 +509,8 @@ figure_09 <- ggplot(
 save_figure_png(
   figure_09,
   "figure_09_return_distributions.png",
-  width = 10.5,
-  height = 8
+  width = 11,
+  height = 8.5
 )
 
 
