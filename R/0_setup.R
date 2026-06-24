@@ -196,6 +196,27 @@ ECB_CONTROL_VARS <- c(
   "mica_dummy"
 )
 
+# Crypto trend controls:
+# These are created later in Step 3, after each central-bank-specific
+# trading-day sample has been filtered. They are not raw-data columns.
+CRYPTO_TREND_LAG <- 5L
+
+CRYPTO_5D_LAG_RETURN_VARS <- c(
+  "btc_5d_lag_log_return",
+  "eth_5d_lag_log_return",
+  "usdt_5d_lag_log_return"
+)
+
+ECB_BASELINE_CONTROL_VARS <- unique(c(
+  ECB_CONTROL_VARS,
+  CRYPTO_5D_LAG_RETURN_VARS
+))
+
+FED_BASELINE_CONTROL_VARS <- unique(c(
+  FED_CONTROL_VARS,
+  CRYPTO_5D_LAG_RETURN_VARS
+))
+
 ALL_MODEL_VARS <- unique(c(
   DATE_VAR,
   CRYPTO_RETURN_VARS,
@@ -217,6 +238,10 @@ VAR_LABELS <- c(
   btc_log_return = "BTC log return",
   eth_log_return = "ETH log return",
   usdt_log_return = "USDT log return",
+  
+  btc_5d_lag_log_return = "BTC lagged 5-trading-day log return",
+  eth_5d_lag_log_return = "ETH lagged 5-trading-day log return",
+  usdt_5d_lag_log_return = "USDT lagged 5-trading-day log return",
   
   sp500_log_return = "S&P 500 log return",
   stoxx50_log_return = "STOXX50 log return",

@@ -110,7 +110,7 @@ check_required_columns(
     DATE_VAR,
     CRYPTO_RETURN_VARS,
     "ecb_mp",
-    ECB_CONTROL_VARS,
+    ECB_BASELINE_CONTROL_VARS,
     "ecb_meeting",
     "ecb_mp_nonzero"
   )),
@@ -123,7 +123,7 @@ check_required_columns(
     DATE_VAR,
     CRYPTO_RETURN_VARS,
     "fed_mp",
-    FED_CONTROL_VARS,
+    FED_BASELINE_CONTROL_VARS,
     "fed_meeting",
     "fed_mp_nonzero"
   )),
@@ -165,8 +165,8 @@ irf_model_plan <- tibble::tibble(
   sample_name = c("ecb", "fed"),
   shock_var = c("ecb_mp", "fed_mp"),
   controls = c(
-    paste(ECB_CONTROL_VARS, collapse = ", "),
-    paste(FED_CONTROL_VARS, collapse = ", ")
+    paste(ECB_BASELINE_CONTROL_VARS, collapse = ", "),
+    paste(FED_BASELINE_CONTROL_VARS, collapse = ", ")
   ),
   asset_vars = c(
     paste(CRYPTO_RETURN_VARS, collapse = ", "),
@@ -206,7 +206,7 @@ ecb_irf <- estimate_multiple_asset_irfs(
   data = ecb_sample,
   asset_vars = CRYPTO_RETURN_VARS,
   shock_var = "ecb_mp",
-  control_vars = ECB_CONTROL_VARS,
+  control_vars = ECB_BASELINE_CONTROL_VARS,
   central_bank = "ECB",
   horizons = HORIZONS,
   lags_endog = LP_LAGS_ENDOG,
@@ -234,7 +234,7 @@ fed_irf <- estimate_multiple_asset_irfs(
   data = fed_sample,
   asset_vars = CRYPTO_RETURN_VARS,
   shock_var = "fed_mp",
-  control_vars = FED_CONTROL_VARS,
+  control_vars = FED_BASELINE_CONTROL_VARS,
   central_bank = "Fed",
   horizons = HORIZONS,
   lags_endog = LP_LAGS_ENDOG,

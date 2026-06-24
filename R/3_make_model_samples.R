@@ -118,8 +118,8 @@ model_specs <- tibble::tibble(
   trading_day_var = c("eu_trading_day", "us_trading_day"),
   stock_return_var = c("stoxx50_log_return", "sp500_log_return"),
   controls = c(
-    paste(ECB_CONTROL_VARS, collapse = ", "),
-    paste(FED_CONTROL_VARS, collapse = ", ")
+    paste(ECB_BASELINE_CONTROL_VARS, collapse = ", "),
+    paste(FED_BASELINE_CONTROL_VARS, collapse = ", ")
   )
 )
 
@@ -156,6 +156,28 @@ count_missing_by_variable <- function(data, variables, sample_name) {
       )
     }
   )
+}
+
+add_crypto_5d_lag_controls <- function(data, lag_days = CRYPTO_TREND_LAG) {
+  out <- data %>%
+    arrange(.data[[DATE_VAR]])
+  
+  for (i in seq_along(CRYPTO_RETURN_VARS)) {
+    source_var <- CRYPTO_RETURN_VARS[i]
+    output_var <- CRYPTO_5D_LAG_RETURN_VARS[i]
+    
+    lagged_returns <- do.call(
+      cbind,
+      lapply(
+        seq_len(lag_days),
+        function(k) dplyr::lag(out[[source_var]], n = k)
+      )
+    )
+    
+    out[[output_var]] <- rowSums(lagged_returns, na.rm = FALSE)
+  }
+  
+  out
 }
 
 make_model_sample <- function(
@@ -216,6 +238,7 @@ make_model_sample <- function(
   sample_final <- sample_before_rhs_filter %>%
     filter(.data$rhs_complete) %>%
     arrange(.data$date) %>%
+    add_crypto_5d_lag_controls() %>%
     mutate(
       trading_day_index = row_number(),
       shock_abs = abs(.data[[shock_var]]),
@@ -228,6 +251,7 @@ make_model_sample <- function(
       trading_day_index,
       date,
       all_of(CRYPTO_RETURN_VARS),
+      all_of(CRYPTO_5D_LAG_RETURN_VARS),
       all_of(stock_return_var),
       all_of(control_vars),
       all_of(shock_var),

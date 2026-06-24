@@ -226,8 +226,8 @@ check_required_columns(
     CRYPTO_RETURN_VARS,
     STOCK_RETURN_VARS,
     SHOCK_VARS,
-    FED_CONTROL_VARS,
-    ECB_CONTROL_VARS,
+    FED_BASELINE_CONTROL_VARS,
+    ECB_BASELINE_CONTROL_VARS,
     "ecb_mp_observed",
     "fed_mp_observed",
     "ecb_meeting",
@@ -328,6 +328,10 @@ model_sample_summary <- tibble::tibble(
   rhs_na_rows_any = c(
     sum(!stats::complete.cases(ecb_sample[, unique(c("ecb_mp", ECB_CONTROL_VARS))])),
     sum(!stats::complete.cases(fed_sample[, unique(c("fed_mp", FED_CONTROL_VARS))]))
+  ),
+  lag5_control_na_rows_any = c(
+    sum(!stats::complete.cases(ecb_sample[, CRYPTO_5D_LAG_RETURN_VARS])),
+    sum(!stats::complete.cases(fed_sample[, CRYPTO_5D_LAG_RETURN_VARS]))
   )
 ) %>%
   mutate(

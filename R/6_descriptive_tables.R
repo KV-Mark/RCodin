@@ -249,7 +249,7 @@ count_shock_directions <- function(x) {
 # 6.3 Table 1: Descriptive statistics for all variables
 # ------------------------------------------------------------------------------
 
-table_01_vars <- unique(c(
+table_01_base_vars <- unique(c(
   CRYPTO_RETURN_VARS,
   STOCK_RETURN_VARS,
   "dxy_log_return",
@@ -265,11 +265,29 @@ table_01_vars <- unique(c(
   "fed_mp_observed"
 ))
 
-table_01 <- summary_stats_for_variables(
+table_01_clean_data <- summary_stats_for_variables(
   data = clean_data,
-  variables = table_01_vars,
+  variables = table_01_base_vars,
   sample_scope = "Full cleaned daily dataset",
   nonzero_only_vars = c("ecb_mp_observed", "fed_mp_observed")
+)
+
+table_01_crypto_lag_controls <- bind_rows(
+  summary_stats_for_variables(
+    data = ecb_sample,
+    variables = CRYPTO_5D_LAG_RETURN_VARS,
+    sample_scope = "ECB trading-day model sample; lagged 5-trading-day crypto controls"
+  ),
+  summary_stats_for_variables(
+    data = fed_sample,
+    variables = CRYPTO_5D_LAG_RETURN_VARS,
+    sample_scope = "Fed trading-day model sample; lagged 5-trading-day crypto controls"
+  )
+)
+
+table_01 <- bind_rows(
+  table_01_clean_data,
+  table_01_crypto_lag_controls
 )
 
 write_table_csv(
@@ -400,32 +418,50 @@ write_table_csv(
 # 6.7 Table 5: Correlation matrix for control variables
 # ------------------------------------------------------------------------------
 
-control_correlation_vars <- unique(c(
-  FED_CONTROL_VARS,
-  ECB_CONTROL_VARS
-))
+make_control_correlation_table <- function(data, control_vars, central_bank) {
+  vars_present <- intersect(control_vars, names(data))
+  
+  if (length(vars_present) == 0) {
+    return(tibble::tibble())
+  }
+  
+  control_correlation_data <- data %>%
+    select(all_of(vars_present))
+  
+  correlation_matrix <- stats::cor(
+    control_correlation_data,
+    use = "pairwise.complete.obs"
+  )
+  
+  out <- as.data.frame(correlation_matrix) %>%
+    tibble::rownames_to_column(var = "variable") %>%
+    mutate(
+      central_bank = central_bank,
+      .before = "variable"
+    )
+  
+  out$variable <- label_variable_step6(out$variable)
+  
+  colnames(out) <- c(
+    "central_bank",
+    "variable",
+    label_variable_step6(colnames(correlation_matrix))
+  )
+  
+  out
+}
 
-control_correlation_vars <- intersect(
-  control_correlation_vars,
-  names(clean_data)
-)
-
-control_correlation_data <- clean_data %>%
-  select(all_of(control_correlation_vars))
-
-correlation_matrix <- stats::cor(
-  control_correlation_data,
-  use = "pairwise.complete.obs"
-)
-
-table_05 <- as.data.frame(correlation_matrix) %>%
-  tibble::rownames_to_column(var = "variable")
-
-table_05$variable <- label_variable_step6(table_05$variable)
-
-colnames(table_05) <- c(
-  "variable",
-  label_variable_step6(colnames(correlation_matrix))
+table_05 <- bind_rows(
+  make_control_correlation_table(
+    data = ecb_sample,
+    control_vars = ECB_BASELINE_CONTROL_VARS,
+    central_bank = "ECB"
+  ),
+  make_control_correlation_table(
+    data = fed_sample,
+    control_vars = FED_BASELINE_CONTROL_VARS,
+    central_bank = "Fed"
+  )
 )
 
 write_table_csv(
@@ -596,10 +632,10 @@ table_notes <- tibble::tibble(
     "table_12_announcement_timing_summary.csv"
   ),
   notes = c(
-    "Notes: This table reports descriptive statistics for the cleaned daily dataset. N is the number of non-missing observations. Return variables are daily log returns as stored in the dataset. For ECB and Fed monetary policy surprise variables, statistics are computed using nonzero observed surprise values only."
+    "Notes: This table reports descriptive statistics for the cleaned daily dataset and the lagged crypto trend controls used in the ECB and Fed model samples. N is the number of non-missing observations. Return variables are log returns. The lagged 5-trading-day crypto controls are computed as the sum of the previous five crypto daily log returns within each central-bank-specific trading-day sample. For ECB and Fed monetary policy surprise variables, statistics are computed using nonzero observed surprise values only.",
     "Notes: This table reports summary statistics for cryptocurrency and stock-index daily log returns. N is the number of non-missing observations. Statistics are based on the cleaned daily dataset.",
     "Notes: This table reports summary statistics for monetary policy surprises on announcement days retained in the central-bank-specific model samples. ECB and Fed samples are based on their respective trading-day filters.",
-    "Notes: This table reports pairwise correlations among control variables used in the ECB and Fed baseline models. Correlations are computed using pairwise complete observations.",
+    "Notes: This table reports pairwise correlations among control variables used in the ECB and Fed baseline models. The baseline controls include the lagged 5-trading-day cryptocurrency return controls. Correlations are computed using pairwise complete observations within each central-bank-specific model sample.",
     "Notes: This table reports the number of monetary policy announcement days and the direction of monetary policy surprises in the model samples. Negative, zero, and positive shocks refer to observed monetary policy surprise values on announcement days.",
     "Notes: This table reports the weekday distribution of monetary policy announcements and the average number of trading days between consecutive announcements within each central-bank-specific model sample."
   )
