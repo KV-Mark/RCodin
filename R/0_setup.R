@@ -439,3 +439,5 @@ if (!file.exists(RAW_DATA_FILE)) {
     call. = FALSE
   )
 }
+
+message("Step 0 complete: path setup complete.")
