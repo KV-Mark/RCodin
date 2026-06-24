@@ -100,8 +100,8 @@ message("Fed model sample loaded. Rows: ", nrow(fed_sample))
 
 VAR_LABELS_STEP6 <- c(
   VAR_LABELS,
-  ecb_mp_observed = "ECB monetary policy surprise, observed meetings only",
-  fed_mp_observed = "Fed monetary policy surprise, observed meetings only"
+  ecb_mp_observed = "ECB monetary policy surprise, nonzero observations only",
+  fed_mp_observed = "Fed monetary policy surprise, nonzero observations only"
 )
 
 label_variable_step6 <- function(x) {
@@ -153,7 +153,12 @@ safe_skewness <- function(x) {
   moments::skewness(x)
 }
 
-summary_stats_for_variables <- function(data, variables, sample_scope) {
+summary_stats_for_variables <- function(
+    data,
+    variables,
+    sample_scope,
+    nonzero_only_vars = character(0)
+) {
   variables_present <- intersect(variables, names(data))
   variables_missing <- setdiff(variables, names(data))
   
@@ -168,10 +173,18 @@ summary_stats_for_variables <- function(data, variables, sample_scope) {
   purrr::map_dfr(
     variables_present,
     function(v) {
-      x <- suppressWarnings(as.numeric(data[[v]]))
+      x_raw <- suppressWarnings(as.numeric(data[[v]]))
+      
+      if (v %in% nonzero_only_vars) {
+        x <- x_raw[!is.na(x_raw) & x_raw != 0]
+        row_sample_scope <- paste0(sample_scope, "; nonzero observations only")
+      } else {
+        x <- x_raw
+        row_sample_scope <- sample_scope
+      }
       
       tibble::tibble(
-        sample_scope = sample_scope,
+        sample_scope = row_sample_scope,
         variable = v,
         label = label_variable_step6(v),
         N = sum(!is.na(x)),
@@ -255,7 +268,8 @@ table_01_vars <- unique(c(
 table_01 <- summary_stats_for_variables(
   data = clean_data,
   variables = table_01_vars,
-  sample_scope = "Full cleaned daily dataset"
+  sample_scope = "Full cleaned daily dataset",
+  nonzero_only_vars = c("ecb_mp_observed", "fed_mp_observed")
 )
 
 write_table_csv(
@@ -582,7 +596,7 @@ table_notes <- tibble::tibble(
     "table_12_announcement_timing_summary.csv"
   ),
   notes = c(
-    "Notes: This table reports descriptive statistics for the cleaned daily dataset. N is the number of non-missing observations. Return variables are daily log returns as stored in the dataset. Monetary policy surprise variables with suffix observed are measured only on observed announcement days.",
+    "Notes: This table reports descriptive statistics for the cleaned daily dataset. N is the number of non-missing observations. Return variables are daily log returns as stored in the dataset. For ECB and Fed monetary policy surprise variables, statistics are computed using nonzero observed surprise values only."
     "Notes: This table reports summary statistics for cryptocurrency and stock-index daily log returns. N is the number of non-missing observations. Statistics are based on the cleaned daily dataset.",
     "Notes: This table reports summary statistics for monetary policy surprises on announcement days retained in the central-bank-specific model samples. ECB and Fed samples are based on their respective trading-day filters.",
     "Notes: This table reports pairwise correlations among control variables used in the ECB and Fed baseline models. Correlations are computed using pairwise complete observations.",
