@@ -483,7 +483,256 @@ message("Saved IRF model configs: ", irf_configs_file)
 message("Saved full IRF estimation objects: ", irf_objects_file)
 
 
-# ------------------------------------------------------------ ------------------
+# ------------------------------------------------------------------------------
+# 5.10B Additional check: USDT IRFs with 1st/99th percentile winsorised returns
+# ------------------------------------------------------------------------------
+
+# Purpose:
+#   - Create a separate robustness/check table for Tether (USDT)
+#   - Winsorise USDT daily log returns at the 1st and 99th percentile
+#   - Re-estimate USDT IRFs for ECB and Fed monetary policy surprises
+#   - Keep the baseline IRF results unchanged
+
+USDT_WINSORISED_RETURN_VAR <- "usdt_log_return_winsor_1_99"
+USDT_WINSORISED_5D_LAG_VAR <- "usdt_5d_lag_log_return_winsor_1_99"
+
+winsorise_1_99 <- function(x) {
+  bounds <- stats::quantile(
+    x,
+    probs = c(0.01, 0.99),
+    na.rm = TRUE,
+    type = 7,
+    names = FALSE
+  )
+  
+  pmin(
+    pmax(x, bounds[1]),
+    bounds[2]
+  )
+}
+
+make_usdt_winsorised_sample <- function(data, central_bank_label) {
+  data_ordered <- data %>%
+    arrange(.data[[DATE_VAR]])
+  
+  winsor_bounds <- stats::quantile(
+    data_ordered$usdt_log_return,
+    probs = c(0.01, 0.99),
+    na.rm = TRUE,
+    type = 7,
+    names = FALSE
+  )
+  
+  data_ordered[[USDT_WINSORISED_RETURN_VAR]] <- winsorise_1_99(
+    data_ordered$usdt_log_return
+  )
+  
+  lagged_winsorised_usdt <- do.call(
+    cbind,
+    lapply(
+      seq_len(CRYPTO_TREND_LAG),
+      function(k) dplyr::lag(data_ordered[[USDT_WINSORISED_RETURN_VAR]], n = k)
+    )
+  )
+  
+  data_ordered[[USDT_WINSORISED_5D_LAG_VAR]] <- rowSums(
+    lagged_winsorised_usdt,
+    na.rm = FALSE
+  )
+  
+  bounds_table <- tibble::tibble(
+    central_bank = central_bank_label,
+    original_variable = "usdt_log_return",
+    winsorised_variable = USDT_WINSORISED_RETURN_VAR,
+    lower_percentile = 0.01,
+    upper_percentile = 0.99,
+    lower_bound = winsor_bounds[1],
+    upper_bound = winsor_bounds[2],
+    n_rows = nrow(data_ordered),
+    n_non_missing_original = sum(!is.na(data_ordered$usdt_log_return)),
+    n_lower_clipped = sum(data_ordered$usdt_log_return < winsor_bounds[1], na.rm = TRUE),
+    n_upper_clipped = sum(data_ordered$usdt_log_return > winsor_bounds[2], na.rm = TRUE)
+  )
+  
+  list(
+    sample = data_ordered,
+    bounds = bounds_table
+  )
+}
+
+replace_usdt_5d_control_with_winsorised <- function(control_vars) {
+  out <- control_vars
+  out[out == "usdt_5d_lag_log_return"] <- USDT_WINSORISED_5D_LAG_VAR
+  unique(out)
+}
+
+message("Creating USDT winsorised samples...")
+
+ecb_usdt_winsorised <- make_usdt_winsorised_sample(
+  data = ecb_sample,
+  central_bank_label = "ECB"
+)
+
+fed_usdt_winsorised <- make_usdt_winsorised_sample(
+  data = fed_sample,
+  central_bank_label = "Fed"
+)
+
+ecb_usdt_winsorised_sample <- ecb_usdt_winsorised$sample
+fed_usdt_winsorised_sample <- fed_usdt_winsorised$sample
+
+usdt_winsorisation_bounds <- bind_rows(
+  ecb_usdt_winsorised$bounds,
+  fed_usdt_winsorised$bounds
+)
+
+write_table_csv(
+  usdt_winsorisation_bounds,
+  "validation_05_usdt_winsorised_bounds.csv",
+  digits = TABLE_DIGITS
+)
+
+ecb_usdt_winsorised_controls <- replace_usdt_5d_control_with_winsorised(
+  ECB_BASELINE_CONTROL_VARS
+)
+
+fed_usdt_winsorised_controls <- replace_usdt_5d_control_with_winsorised(
+  FED_BASELINE_CONTROL_VARS
+)
+
+message("Estimating ECB USDT winsorised IRF...")
+
+ecb_usdt_winsorised_irf <- estimate_single_asset_irf(
+  data = ecb_usdt_winsorised_sample,
+  asset_var = USDT_WINSORISED_RETURN_VAR,
+  shock_var = "ecb_mp",
+  control_vars = ecb_usdt_winsorised_controls,
+  central_bank = "ECB",
+  horizons = HORIZONS,
+  lags_endog = LP_LAGS_ENDOG,
+  lags_exog = LP_LAGS_EXOG,
+  trend = LP_TREND,
+  nw_lag_rule = NW_LAG_RULE,
+  nw_fixed_lag = NULL,
+  conf_z = CONF_Z,
+  sig_level = SIG_LEVEL,
+  run_lpirfs = TRUE,
+  lpirfs_rds_file = file.path(lpirfs_rds_dir, "lpirfs_ecb_usdt_winsor_1_99.rds")
+)
+
+message("Estimating Fed USDT winsorised IRF...")
+
+fed_usdt_winsorised_irf <- estimate_single_asset_irf(
+  data = fed_usdt_winsorised_sample,
+  asset_var = USDT_WINSORISED_RETURN_VAR,
+  shock_var = "fed_mp",
+  control_vars = fed_usdt_winsorised_controls,
+  central_bank = "Fed",
+  horizons = HORIZONS,
+  lags_endog = LP_LAGS_ENDOG,
+  lags_exog = LP_LAGS_EXOG,
+  trend = LP_TREND,
+  nw_lag_rule = NW_LAG_RULE,
+  nw_fixed_lag = NULL,
+  conf_z = CONF_Z,
+  sig_level = SIG_LEVEL,
+  run_lpirfs = TRUE,
+  lpirfs_rds_file = file.path(lpirfs_rds_dir, "lpirfs_fed_usdt_winsor_1_99.rds")
+)
+
+usdt_winsorised_irf_results_long <- bind_rows(
+  ecb_usdt_winsorised_irf$tidy_results,
+  fed_usdt_winsorised_irf$tidy_results
+) %>%
+  mutate(
+    asset = "USDT",
+    asset_variant = "USDT log return winsorised at 1st and 99th percentiles",
+    original_asset_var = "usdt_log_return",
+    winsorised_asset_var = USDT_WINSORISED_RETURN_VAR,
+    winsorised_5d_lag_control = USDT_WINSORISED_5D_LAG_VAR
+  ) %>%
+  left_join(
+    usdt_winsorisation_bounds %>%
+      select(
+        central_bank,
+        winsor_lower_bound = lower_bound,
+        winsor_upper_bound = upper_bound,
+        winsor_n_lower_clipped = n_lower_clipped,
+        winsor_n_upper_clipped = n_upper_clipped
+      ),
+    by = "central_bank"
+  ) %>%
+  arrange(
+    .data$central_bank,
+    .data$horizon
+  )
+
+usdt_winsorised_irf_model_configs <- bind_rows(
+  ecb_usdt_winsorised_irf$config,
+  fed_usdt_winsorised_irf$config
+) %>%
+  mutate(
+    asset = "USDT",
+    asset_variant = "USDT log return winsorised at 1st and 99th percentiles",
+    original_asset_var = "usdt_log_return",
+    winsorised_asset_var = USDT_WINSORISED_RETURN_VAR,
+    winsorised_5d_lag_control = USDT_WINSORISED_5D_LAG_VAR
+  ) %>%
+  arrange(
+    .data$central_bank
+  )
+
+usdt_winsorised_status <- usdt_winsorised_irf_results_long %>%
+  group_by(.data$central_bank, .data$asset, .data$shock_var, .data$asset_var) %>%
+  summarise(
+    horizons_estimated = n(),
+    horizons_ok = sum(.data$regression_status == "OK", na.rm = TRUE),
+    horizons_not_ok = sum(.data$regression_status != "OK", na.rm = TRUE),
+    min_n_obs = min(.data$n_obs, na.rm = TRUE),
+    max_n_obs = max(.data$n_obs, na.rm = TRUE),
+    nonzero_shocks_min = min(.data$n_nonzero_shocks, na.rm = TRUE),
+    nonzero_shocks_max = max(.data$n_nonzero_shocks, na.rm = TRUE),
+    significant_horizons_5pct = sum(.data$significant_5pct, na.rm = TRUE),
+    winsor_lower_bound = dplyr::first(.data$winsor_lower_bound),
+    winsor_upper_bound = dplyr::first(.data$winsor_upper_bound),
+    winsor_n_lower_clipped = dplyr::first(.data$winsor_n_lower_clipped),
+    winsor_n_upper_clipped = dplyr::first(.data$winsor_n_upper_clipped),
+    .groups = "drop"
+  )
+
+write_table_csv(
+  usdt_winsorised_status,
+  "validation_05_usdt_winsorised_irf_status.csv",
+  digits = TABLE_DIGITS
+)
+
+usdt_winsorised_irf_results_file <- file.path(
+  PATHS$data_processed,
+  "05_usdt_winsorised_irf_results_long.csv"
+)
+
+usdt_winsorised_irf_configs_file <- file.path(
+  PATHS$data_processed,
+  "05_usdt_winsorised_irf_model_configs.csv"
+)
+
+readr::write_csv(
+  usdt_winsorised_irf_results_long,
+  usdt_winsorised_irf_results_file,
+  na = ""
+)
+
+readr::write_csv(
+  usdt_winsorised_irf_model_configs,
+  usdt_winsorised_irf_configs_file,
+  na = ""
+)
+
+message("Saved USDT winsorised IRF results: ", usdt_winsorised_irf_results_file)
+message("Saved USDT winsorised IRF configs: ", usdt_winsorised_irf_configs_file)
+
+
+# ------------------------------------------------------------------------------
 # 5.11 Console preview
 # ------------------------------------------------------------------------------
 

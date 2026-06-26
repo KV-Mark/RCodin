@@ -354,6 +354,219 @@ readr::write_csv(
 
 message("Saved table notes: ", file.path(PATHS$tables, "table_notes_07_irf_tables.csv"))
 
+# ------------------------------------------------------------------------------
+# 7.8B Additional table: USDT winsorised IRF detailed results
+# ------------------------------------------------------------------------------
+
+usdt_winsorised_irf_results_file <- file.path(
+  PATHS$data_processed,
+  "05_usdt_winsorised_irf_results_long.csv"
+)
+
+usdt_winsorised_irf_configs_file <- file.path(
+  PATHS$data_processed,
+  "05_usdt_winsorised_irf_model_configs.csv"
+)
+
+if (!file.exists(usdt_winsorised_irf_results_file)) {
+  stop(
+    "Could not find USDT winsorised IRF results file: ",
+    usdt_winsorised_irf_results_file,
+    "\nRun source('RCodin/R/5_estimate_irfs.R') first.",
+    call. = FALSE
+  )
+}
+
+if (!file.exists(usdt_winsorised_irf_configs_file)) {
+  stop(
+    "Could not find USDT winsorised IRF config file: ",
+    usdt_winsorised_irf_configs_file,
+    "\nRun source('RCodin/R/5_estimate_irfs.R') first.",
+    call. = FALSE
+  )
+}
+
+usdt_winsorised_irf_results <- safe_read_csv(usdt_winsorised_irf_results_file)
+usdt_winsorised_irf_configs <- safe_read_csv(usdt_winsorised_irf_configs_file)
+
+check_required_columns(
+  usdt_winsorised_irf_results,
+  unique(c(
+    required_irf_cols,
+    "asset_variant",
+    "original_asset_var",
+    "winsorised_asset_var",
+    "winsorised_5d_lag_control",
+    "winsor_lower_bound",
+    "winsor_upper_bound",
+    "winsor_n_lower_clipped",
+    "winsor_n_upper_clipped"
+  )),
+  data_name = "USDT winsorised IRF results from Step 5"
+)
+
+table_10b_usdt_winsorised_irf_detailed <- usdt_winsorised_irf_results %>%
+  mutate(
+    central_bank = as.character(.data$central_bank),
+    asset = "USDT",
+    central_bank_order = standardize_central_bank_order(.data$central_bank),
+    
+    coefficient_star = format_coefficient_with_star(
+      .data$coefficient,
+      .data$significance_5pct,
+      digits = TABLE_DIGITS
+    ),
+    standard_error_parentheses = format_parentheses(
+      .data$std_error,
+      digits = TABLE_DIGITS
+    ),
+    confidence_interval_95 = format_ci(
+      .data$conf_low,
+      .data$conf_high,
+      digits = TABLE_DIGITS
+    ),
+    p_value_formatted = format_p_value(
+      .data$p_value,
+      digits = TABLE_DIGITS
+    ),
+    winsorisation_rule = "USDT daily log returns winsorised at 1st and 99th percentiles within each central-bank-specific trading-day sample",
+    significance_rule = "Significant at 5% if p < 0.05",
+    confidence_interval_rule = "95% confidence interval"
+  ) %>%
+  arrange(
+    .data$central_bank_order,
+    .data$horizon
+  ) %>%
+  select(
+    central_bank,
+    asset,
+    asset_variant,
+    horizon,
+    coefficient,
+    std_error,
+    t_statistic,
+    p_value,
+    conf_low,
+    conf_high,
+    significant_5pct,
+    coefficient_star,
+    standard_error_parentheses,
+    confidence_interval_95,
+    p_value_formatted,
+    n_obs,
+    n_nonzero_shocks,
+    r_squared,
+    adj_r_squared,
+    f_p_value,
+    nw_lag,
+    regression_status,
+    shock_var,
+    original_asset_var,
+    winsorised_asset_var,
+    winsorised_5d_lag_control,
+    winsor_lower_bound,
+    winsor_upper_bound,
+    winsor_n_lower_clipped,
+    winsor_n_upper_clipped,
+    equation_lhs,
+    equation_rhs,
+    winsorisation_rule,
+    significance_rule,
+    confidence_interval_rule
+  )
+
+failed_usdt_winsorised_rows <- table_10b_usdt_winsorised_irf_detailed %>%
+  filter(.data$regression_status != "OK")
+
+if (nrow(failed_usdt_winsorised_rows) > 0) {
+  warning(
+    "Some USDT winsorised IRF rows have regression_status not equal to OK. ",
+    "They will still be saved, but check validation_07_usdt_winsorised_irf_table_summary.csv.",
+    call. = FALSE
+  )
+}
+
+if (all(is.na(table_10b_usdt_winsorised_irf_detailed$coefficient))) {
+  stop(
+    "All USDT winsorised IRF coefficients are NA. The new check table would be unusable.",
+    call. = FALSE
+  )
+}
+
+validation_07_usdt_winsorised_summary <- table_10b_usdt_winsorised_irf_detailed %>%
+  group_by(.data$central_bank, .data$asset, .data$shock_var, .data$winsorised_asset_var) %>%
+  summarise(
+    horizons_in_table = n(),
+    min_horizon = min(.data$horizon, na.rm = TRUE),
+    max_horizon = max(.data$horizon, na.rm = TRUE),
+    rows_ok = sum(.data$regression_status == "OK", na.rm = TRUE),
+    rows_not_ok = sum(.data$regression_status != "OK", na.rm = TRUE),
+    min_n_obs = min(.data$n_obs, na.rm = TRUE),
+    max_n_obs = max(.data$n_obs, na.rm = TRUE),
+    nonzero_shocks_min = min(.data$n_nonzero_shocks, na.rm = TRUE),
+    nonzero_shocks_max = max(.data$n_nonzero_shocks, na.rm = TRUE),
+    significant_horizons_5pct = sum(.data$significant_5pct, na.rm = TRUE),
+    first_significant_horizon = ifelse(
+      any(.data$significant_5pct, na.rm = TRUE),
+      min(.data$horizon[.data$significant_5pct], na.rm = TRUE),
+      NA_integer_
+    ),
+    last_significant_horizon = ifelse(
+      any(.data$significant_5pct, na.rm = TRUE),
+      max(.data$horizon[.data$significant_5pct], na.rm = TRUE),
+      NA_integer_
+    ),
+    min_coefficient = min(.data$coefficient, na.rm = TRUE),
+    max_coefficient = max(.data$coefficient, na.rm = TRUE),
+    winsor_lower_bound = dplyr::first(.data$winsor_lower_bound),
+    winsor_upper_bound = dplyr::first(.data$winsor_upper_bound),
+    winsor_n_lower_clipped = dplyr::first(.data$winsor_n_lower_clipped),
+    winsor_n_upper_clipped = dplyr::first(.data$winsor_n_upper_clipped),
+    .groups = "drop"
+  ) %>%
+  arrange(
+    standardize_central_bank_order(.data$central_bank)
+  )
+
+table_notes_07_usdt_winsorised <- tibble::tibble(
+  table_file = "table_10b_usdt_winsorised_irf_detailed_results.csv",
+  notes = paste0(
+    "Notes: This table reports local projection impulse response results for USDT daily log returns ",
+    "after winsorising USDT log returns at the 1st and 99th percentiles within each central-bank-specific ",
+    "trading-day sample. Results are reported separately for ECB and Fed monetary policy surprises. ",
+    "The horizon column reports trading-day horizons h = 0 to h = 25. ",
+    "The coefficient is the estimated beta_h from the local projection regression of the winsorised USDT return ",
+    "at t+h on the monetary policy surprise at t and the relevant controls. ",
+    "The USDT 5-day lag trend control is also recalculated from the winsorised USDT daily log return. ",
+    "Standard errors are Newey-West/HAC standard errors. Confidence intervals are 95%. ",
+    "An asterisk (*) denotes statistical significance at the 5% level."
+  )
+)
+
+write_table_csv(
+  table_10b_usdt_winsorised_irf_detailed,
+  "table_10b_usdt_winsorised_irf_detailed_results.csv",
+  digits = TABLE_DIGITS
+)
+
+write_table_csv(
+  validation_07_usdt_winsorised_summary,
+  "validation_07_usdt_winsorised_irf_table_summary.csv",
+  digits = TABLE_DIGITS
+)
+
+readr::write_csv(
+  table_notes_07_usdt_winsorised,
+  file.path(PATHS$tables, "table_notes_07_usdt_winsorised_irf_table.csv"),
+  na = ""
+)
+
+message(
+  "Saved USDT winsorised IRF detailed table: ",
+  file.path(PATHS$tables, "table_10b_usdt_winsorised_irf_detailed_results.csv")
+)
+
+
 
 # ------------------------------------------------------------------------------
 # 7.9 Console preview

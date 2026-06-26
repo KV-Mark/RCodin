@@ -248,14 +248,18 @@ estimate_lp_horizon_manual <- function(
   
   response_var <- paste0(asset_var, "_h", horizon)
   
+  # Do not create an additional 1-day lag of controls that are already
+  # constructed as lagged multi-day controls.
+  controls_to_lag <- setdiff(control_vars, CRYPTO_5D_LAG_RETURN_VARS)
+  
   design_data <- data_ordered %>%
     add_horizon_response(asset_var = asset_var, horizon = horizon) %>%
     add_lags(variables = asset_var, lags = lags_endog) %>%
-    add_lags(variables = control_vars, lags = lags_exog) %>%
+    add_lags(variables = controls_to_lag, lags = lags_exog) %>%
     add_trend_terms(trend = trend)
   
   lagged_endog_vars <- generate_lag_names(asset_var, lags_endog)
-  lagged_control_vars <- generate_lag_names(control_vars, lags_exog)
+  lagged_control_vars <- generate_lag_names(controls_to_lag, lags_exog)
   trend_vars <- get_trend_terms(trend)
   
   regressors <- unique(c(
